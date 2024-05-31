@@ -48,7 +48,7 @@ cur = conn.cursor()
 
 
 # Function to upload CSV to PostgreSQL in batches
-def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500):
+def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=92000):
     try:
 
     # with open(csv_file_path, 'r') as f:
@@ -65,11 +65,19 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500):
             
             # Create an insert query template
             query = f"INSERT INTO {table_name} ({', '.join(escaped_header)}) VALUES ({', '.join(['%s'] * len(header))})"
-
+            
+            start_skip_time = time.time()
+            for _ in range(start_row):
+                next(reader, None)
+            end_skip_time = time.time()
+            skip_duration = end_skip_time - start_skip_time
+            logging.info(f"Skipped {start_row} rows in {skip_duration:.2f} seconds")
+            print(f"Skipped {start_row} rows in {skip_duration:.2f} seconds")
+            
             for i, row in enumerate(reader, start=1):
                 processed_row = [convert_to_null(value) for value in row]
                 rows.append(tuple(processed_row))
-                if i % batch_size == 0:
+                if (i - start_row) % batch_size == 0:
                     start_time = time.time()
                     try:
                         cur.executemany(query, rows)
