@@ -36,15 +36,19 @@ print("Starting CSV upload process")
 def convert_to_null(value):
     return None if value == "" else value
 
-# Function to upload CSV to PostgreSQL in batches, starting from a specific row
-def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=98500, max_retries=3):
-    conn = psycopg2.connect(
+# Function to establish a new connection to the database
+def create_connection():
+    return psycopg2.connect(
         host=db_config['host'],
         port=db_config['port'],
         dbname=db_config['dbname'],
         user=db_config['user'],
         password=db_config['password']
     )
+
+# Function to upload CSV to PostgreSQL in batches, starting from a specific row
+def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=108500, max_retries=3):
+    conn = create_connection()
     cur = conn.cursor()
 
     try:
@@ -74,29 +78,28 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
                 rows.append(tuple(processed_row))
                 if (i - start_row) % batch_size == 0:
                     start_time = time.time()
-                    try:
-                        cur.executemany(query, rows)
-                        conn.commit()
-                    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                        logging.error(f"Error inserting batch at row {total_rows}: {e}")
-                        print(f"Error inserting batch at row {total_rows}: {e}")
-                        conn.rollback()
-                        for attempt in range(max_retries):
-                            try:
-                                time.sleep(5)  # Wait before retrying
-                                cur.executemany(query, rows)
-                                conn.commit()
-                                break
-                            except (psycopg2.OperationalError, psycopg2.InterfaceError) as retry_error:
-                                logging.error(f"Retry {attempt + 1} failed for batch at row {total_rows}: {retry_error}")
-                                print(f"Retry {attempt + 1} failed for batch at row {total_rows}: {retry_error}")
-                                conn.rollback()
-                                if attempt == max_retries - 1:
-                                    raise
-                    except Exception as e:
-                        logging.error(f"Error inserting batch at row {total_rows}: {e}")
-                        print(f"Error inserting batch at row {total_rows}: {e}")
-                        raise
+                    retry_count = 0
+                    while retry_count <= max_retries:
+                        try:
+                            cur.executemany(query, rows)
+                            conn.commit()
+                            break
+                        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                            logging.error(f"Error inserting batch at row {total_rows}: {e}")
+                            print(f"Error inserting batch at row {total_rows}: {e}")
+                            conn.rollback()
+                            retry_count += 1
+                            if retry_count > max_retries:
+                                raise
+                            logging.info(f"Retrying batch at row {total_rows}, attempt {retry_count}")
+                            print(f"Retrying batch at row {total_rows}, attempt {retry_count}")
+                            time.sleep(50)  # Wait before retrying
+                            conn = create_connection()
+                            cur = conn.cursor()
+                        except Exception as e:
+                            logging.error(f"Error inserting batch at row {total_rows}: {e}")
+                            print(f"Error inserting batch at row {total_rows}: {e}")
+                            raise
                     end_time = time.time()
                     
                     batch_time = end_time - start_time
@@ -110,29 +113,28 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
             # Insert any remaining rows
             if rows:
                 start_time = time.time()
-                try:
-                    cur.executemany(query, rows)
-                    conn.commit()
-                except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                    logging.error(f"Error inserting final batch at row {total_rows}: {e}")
-                    print(f"Error inserting final batch at row {total_rows}: {e}")
-                    conn.rollback()
-                    for attempt in range(max_retries):
-                        try:
-                            time.sleep(5)  # Wait before retrying
-                            cur.executemany(query, rows)
-                            conn.commit()
-                            break
-                        except (psycopg2.OperationalError, psycopg2.InterfaceError) as retry_error:
-                            logging.error(f"Retry {attempt + 1} failed for final batch at row {total_rows}: {retry_error}")
-                            print(f"Retry {attempt + 1} failed for final batch at row {total_rows}: {retry_error}")
-                            conn.rollback()
-                            if attempt == max_retries - 1:
-                                raise
-                except Exception as e:
-                    logging.error(f"Error inserting final batch at row {total_rows}: {e}")
-                    print(f"Error inserting final batch at row {total_rows}: {e}")
-                    raise
+                retry_count = 0
+                while retry_count <= max_retries:
+                    try:
+                        cur.executemany(query, rows)
+                        conn.commit()
+                        break
+                    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                        logging.error(f"Error inserting final batch at row {total_rows}: {e}")
+                        print(f"Error inserting final batch at row {total_rows}: {e}")
+                        conn.rollback()
+                        retry_count += 1
+                        if retry_count > max_retries:
+                            raise
+                        logging.info(f"Retrying final batch at row {total_rows}, attempt {retry_count}")
+                        print(f"Retrying final batch at row {total_rows}, attempt {retry_count}")
+                        time.sleep(5)  # Wait before retrying
+                        conn = create_connection()
+                        cur = conn.cursor()
+                    except Exception as e:
+                        logging.error(f"Error inserting final batch at row {total_rows}: {e}")
+                        print(f"Error inserting final batch at row {total_rows}: {e}")
+                        raise
                 end_time = time.time()
                 
                 batch_time = end_time - start_time
