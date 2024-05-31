@@ -46,8 +46,14 @@ def create_connection():
         password=db_config['password']
     )
 
+# Function to ensure the connection is open
+def ensure_connection_open(conn):
+    if conn.closed != 0:
+        conn = create_connection()
+    return conn
+
 # Function to upload CSV to PostgreSQL in batches, starting from a specific row
-def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=108500, max_retries=3):
+def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=156500, max_retries=3):
     conn = create_connection()
     cur = conn.cursor()
 
@@ -81,6 +87,8 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
                     retry_count = 0
                     while retry_count <= max_retries:
                         try:
+                            conn = ensure_connection_open(conn)
+                            cur = conn.cursor()
                             cur.executemany(query, rows)
                             conn.commit()
                             break
@@ -93,7 +101,7 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
                                 raise
                             logging.info(f"Retrying batch at row {total_rows}, attempt {retry_count}")
                             print(f"Retrying batch at row {total_rows}, attempt {retry_count}")
-                            time.sleep(50)  # Wait before retrying
+                            time.sleep(5)  # Wait before retrying
                             conn = create_connection()
                             cur = conn.cursor()
                         except Exception as e:
@@ -116,6 +124,8 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
                 retry_count = 0
                 while retry_count <= max_retries:
                     try:
+                        conn = ensure_connection_open(conn)
+                        cur = conn.cursor()
                         cur.executemany(query, rows)
                         conn.commit()
                         break
