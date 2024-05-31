@@ -32,25 +32,42 @@ logging.info("Starting CSV upload process")
 print("Starting CSV upload process")
 
 # Connect to the PostgreSQL database
-conn = psycopg2.connect(
-    host=db_config['host'],
-    port=db_config['port'],
-    dbname=db_config['dbname'],
-    user=db_config['user'],
-    password=db_config['password']
-)
-cur = conn.cursor()
+def create_connection():
+    return psycopg2.connect(
+        host=db_config['host'],
+        port=db_config['port'],
+        dbname=db_config['dbname'],
+        user=db_config['user'],
+        password=db_config['password']
+    )
 
-try:
-    with open(csv_file_path, 'r', encoding='ISO-8859-1') as f:
-        # Use COPY command for bulk insert
-        cur.copy_expert(f"COPY {table_name} FROM STDIN WITH CSV HEADER", f)
-    conn.commit()
-    logging.info("CSV upload complete.")
-    print("CSV upload complete.")
-except Exception as e:
-    logging.error(f"Failed to upload CSV to PostgreSQL: {e}")
-    print(f"Failed to upload CSV to PostgreSQL: {e}")
-finally:
-    cur.close()
-    conn.close()
+# Function to upload CSV to PostgreSQL using COPY
+def upload_csv_using_copy(csv_file_path, table_name):
+    conn = create_connection()
+    cur = conn.cursor()
+
+    try:
+        # Set statement timeout to 0 (no timeout)
+        cur.execute("SET statement_timeout TO 0;")
+
+        with open(csv_file_path, 'r', encoding='ISO-8859-1') as f:
+            copy_sql = f"COPY {table_name} FROM STDIN WITH CSV HEADER"
+            start_time = datetime.now()
+            cur.copy_expert(copy_sql, f)
+            conn.commit()
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            logging.info(f"CSV upload complete in {duration:.2f} seconds")
+            print(f"CSV upload complete in {duration:.2f} seconds")
+    except Exception as e:
+        logging.error(f"Failed to upload CSV to PostgreSQL: {e}")
+        print(f"Failed to upload CSV to PostgreSQL: {e}")
+    finally:
+        cur.close()
+        conn.close()
+
+# Upload CSV to PostgreSQL
+upload_csv_using_copy(csv_file_path, table_name)
+
+logging.info("CSV upload process completed.")
+print("CSV upload process completed.")
