@@ -7,7 +7,7 @@ import time
 import logging
 from datetime import datetime
 
-# Load environment variables from .env file
+# Load environment variables from .env filew
 load_dotenv()
 
 # Define your PostgreSQL connection details from environment variables
@@ -21,7 +21,7 @@ db_config = {
 
 # Path to your CSV file
 csv_file_path = './Seat Cover Review DB - 5.29.2024 (Original).csv'
-table_name = 'seat_cover_reviews_20240530_2'
+table_name = 'seat_cover_reviews_20240530_3'
 
 # Set up logging
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -54,7 +54,7 @@ def ensure_connection_open(conn):
     return conn
 
 # Function to upload CSV to PostgreSQL in batches, starting from a specific row
-def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=190000, max_retries=3):
+def upload_csv_to_postgres(csv_file_path, table_name, batch_size=5000, start_row=0, max_retries=3):
     conn = create_connection()
     cur = conn.cursor()
 

@@ -1,23 +1,17 @@
-import psycopg2
-from psycopg2.extras import execute_batch
 import csv
-from dotenv import load_dotenv
 import os
 import time
 import logging
 from datetime import datetime
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Define your PostgreSQL connection details from environment variables
-db_config = {
-    'host': os.getenv('DB_HOST'),
-    'port': os.getenv('DB_PORT'),
-    'dbname': os.getenv('DB_NAME'),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD')
-}
+# Define your Supabase connection details from environment variables
+supabase_url = os.getenv('SUPABASE_URL')
+supabase_key = os.getenv('SUPABASE_KEY')
 
 # Path to your CSV file
 csv_file_path = './Seat Cover Review DB - 5.29.2024 (Original).csv'
@@ -37,41 +31,20 @@ print("Starting CSV upload process")
 def convert_to_null(value):
     return None if value == "" else value
 
-# Function to establish a new connection to the database
-def create_connection():
-    return psycopg2.connect(
-        host=db_config['host'],
-        port=db_config['port'],
-        dbname=db_config['dbname'],
-        user=db_config['user'],
-        password=db_config['password']
-    )
+# Create a Supabase client
+supabase: Client = create_client(supabase_url, supabase_key)
 
-# Function to ensure the connection is open
-def ensure_connection_open(conn):
-    if conn.closed != 0:
-        conn = create_connection()
-    return conn
-
-# Function to upload CSV to PostgreSQL in batches, starting from a specific row
-def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=190000, max_retries=3):
-    conn = create_connection()
-    cur = conn.cursor()
-
+# Function to upload CSV to Supabase in batches
+def upload_csv_to_supabase(csv_file_path, table_name, batch_size=500, start_row=190000):
     try:
         with open(csv_file_path, 'r', encoding='ISO-8859-1') as f:
             reader = csv.reader(f)
             header = next(reader)  # Skip the header row
 
-            escaped_header = [f'"{col}"' for col in header]
-
             rows = []
             total_rows = start_row
             total_time = 0
-            
-            # Create an insert query template
-            query = f"INSERT INTO {table_name} ({', '.join(escaped_header)}) VALUES ({', '.join(['%s'] * len(header))})"
-            
+
             start_skip_time = time.time()
             for _ in range(start_row):
                 next(reader, None)
@@ -79,93 +52,74 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
             skip_duration = end_skip_time - start_skip_time
             logging.info(f"Skipped {start_row} rows in {skip_duration:.2f} seconds")
             print(f"Skipped {start_row} rows in {skip_duration:.2f} seconds")
-            
+
             for i, row in enumerate(reader, start=start_row + 1):
-                processed_row = [convert_to_null(value) for value in row]
-                rows.append(tuple(processed_row))
+                processed_row = {header[j]: convert_to_null(value) for j, value in enumerate(row)}
+                rows.append(processed_row)
                 if (i - start_row) % batch_size == 0:
                     start_time = time.time()
                     retry_count = 0
-                    while retry_count <= max_retries:
+                    while retry_count <= 3:
                         try:
-                            conn = ensure_connection_open(conn)
-                            cur = conn.cursor()
-                            execute_batch(cur, query, rows)
-                            conn.commit()
+                            response = supabase.table(table_name).insert(rows).execute()
+                            # if response.status_code != 201:
+                            #     raise Exception(f"Failed to insert batch: {response.json()}")
                             break
-                        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                        except Exception as e:
                             logging.error(f"Error inserting batch at row {total_rows}: {e}")
                             print(f"Error inserting batch at row {total_rows}: {e}")
-                            conn.rollback()
                             retry_count += 1
-                            if retry_count > max_retries:
+                            if retry_count > 3:
                                 raise
                             logging.info(f"Retrying batch at row {total_rows}, attempt {retry_count}")
                             print(f"Retrying batch at row {total_rows}, attempt {retry_count}")
                             time.sleep(5)  # Wait before retrying
-                            conn = create_connection()
-                            cur = conn.cursor()
-                        except Exception as e:
-                            logging.error(f"Error inserting batch at row {total_rows}: {e}")
-                            print(f"Error inserting batch at row {total_rows}: {e}")
-                            raise
                     end_time = time.time()
-                    
+
                     batch_time = end_time - start_time
                     total_time += batch_time
                     total_rows += len(rows)
-                    
+
                     logging.info(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
                     print(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
                     rows = []
-                    
+
                     # Add a delay between batch inserts
                     time.sleep(2)
-            
+
             # Insert any remaining rows
             if rows:
                 start_time = time.time()
                 retry_count = 0
-                while retry_count <= max_retries:
+                while retry_count <= 3:
                     try:
-                        conn = ensure_connection_open(conn)
-                        cur = conn.cursor()
-                        execute_batch(cur, query, rows)
-                        conn.commit()
+                        response = supabase.table(table_name).insert(rows).execute()
+                        if response.status_code != 201:
+                            raise Exception(f"Failed to insert final batch: {response.json()}")
                         break
-                    except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                    except Exception as e:
                         logging.error(f"Error inserting final batch at row {total_rows}: {e}")
                         print(f"Error inserting final batch at row {total_rows}: {e}")
-                        conn.rollback()
                         retry_count += 1
-                        if retry_count > max_retries:
+                        if retry_count > 3:
                             raise
                         logging.info(f"Retrying final batch at row {total_rows}, attempt {retry_count}")
                         print(f"Retrying final batch at row {total_rows}, attempt {retry_count}")
                         time.sleep(5)  # Wait before retrying
-                        conn = create_connection()
-                        cur = conn.cursor()
-                    except Exception as e:
-                        logging.error(f"Error inserting final batch at row {total_rows}: {e}")
-                        print(f"Error inserting final batch at row {total_rows}: {e}")
-                        raise
                 end_time = time.time()
-                
+
                 batch_time = end_time - start_time
                 total_time += batch_time
                 total_rows += len(rows)
-                
+
                 logging.info(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
                 print(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
     except Exception as e:
-        logging.error(f"Failed to upload CSV to PostgreSQL: {e}")
-        print(f"Failed to upload CSV to PostgreSQL: {e}")
-    finally:
-        cur.close()
-        conn.close()
+        logging.error(f"Failed to upload CSV to Supabase: {e}")
+        print(f"Failed to upload CSV to Supabase: {e}")
 
-# Upload CSV to PostgreSQL in batches
-upload_csv_to_postgres(csv_file_path, table_name)
+# Upload CSV to Supabase in batches
+upload_csv_to_supabase(csv_file_path, table_name)
 
 logging.info("CSV upload complete.")
 print("CSV upload complete.")
