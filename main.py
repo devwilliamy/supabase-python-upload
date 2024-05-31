@@ -117,6 +117,9 @@ def upload_csv_to_postgres(csv_file_path, table_name, batch_size=500, start_row=
                     logging.info(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
                     print(f"Inserted {total_rows} rows in {batch_time:.2f} seconds. Total time: {total_time:.2f} seconds")
                     rows = []
+                    
+                    # Add a delay between batch inserts
+                    time.sleep(2)
             
             # Insert any remaining rows
             if rows:
