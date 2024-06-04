@@ -94,8 +94,8 @@ def upload_csv_to_supabase(csv_file_path, table_name, batch_size=500, start_row=
                 while retry_count <= 3:
                     try:
                         response = supabase.table(table_name).insert(rows).execute()
-                        if response.status_code != 201:
-                            raise Exception(f"Failed to insert final batch: {response.json()}")
+                        # if response.status_code != 201:
+                        #     raise Exception(f"Failed to insert final batch: {response.json()}")
                         break
                     except Exception as e:
                         logging.error(f"Error inserting final batch at row {total_rows}: {e}")
