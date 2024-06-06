@@ -17,4 +17,7 @@ DB_PASSWORD=
 
 1. Start your virtual env
 2. Install requirements.txt 
-3. python main.py
+3. python main_using_supabase.py
+
+## Note To Self:
+Use main_using_supabase.py. It was 5x faster than psyopg
