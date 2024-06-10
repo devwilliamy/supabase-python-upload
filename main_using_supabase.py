@@ -2,6 +2,7 @@ import csv
 import os
 import time
 import logging
+import argparse
 from datetime import datetime
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -14,18 +15,38 @@ supabase_url = os.getenv('SUPABASE_URL')
 supabase_key = os.getenv('SUPABASE_KEY')
 
 # Path to your CSV file
-csv_file_path = './Seat Cover Review DB - 5.29.2024 (Original).csv'
-table_name = 'seat_cover_reviews_20240530_2'
+# csv_file_path = './Seat Cover Review DB - 5.29.2024 (Original).csv'
+# table_name = 'seat_cover_reviews_20240530_2'
+
+default_csv_file_path = './Car Cover Review DB - 6.04.2024 (V2).csv'
+default_table_name = 'car_cover_reviews_20240604'
+
+# Set up argument parser
+parser = argparse.ArgumentParser(description='Upload CSV to PostgreSQL')
+parser.add_argument('--csv', type=str, help='Path to the CSV file')
+parser.add_argument('--table', type=str, help='Name of the database table')
+
+args = parser.parse_args()
+
+# Get values from arguments or use defaults
+csv_file_path = args.csv if args.csv else default_csv_file_path
+table_name = args.table if args.table else default_table_name
 
 # Set up logging
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = f"upload_log_{timestamp}.log"
+log_filename = f"{table_name}_supabase_upload_log_{timestamp}.log"
 logging.basicConfig(filename=log_filename, level=logging.INFO, 
                     format='%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
 # Log the start of the process
 logging.info("Starting CSV upload process")
 print("Starting CSV upload process")
+
+# Log and print the CSV file path and table name
+logging.info(f"CSV file path: {csv_file_path}")
+logging.info(f"Table name: {table_name}")
+print(f"CSV file path: {csv_file_path}")
+print(f"Table name: {table_name}")
 
 # Function to convert blank strings to None (NULL)
 def convert_to_null(value):
@@ -35,8 +56,9 @@ def convert_to_null(value):
 supabase: Client = create_client(supabase_url, supabase_key)
 
 # Function to upload CSV to Supabase in batches
-def upload_csv_to_supabase(csv_file_path, table_name, batch_size=500, start_row=190000):
+def upload_csv_to_supabase(csv_file_path, table_name, batch_size=500, start_row=0):
     try:
+        # with open(csv_file_path, 'r', encoding='ISO-8859-1') as f:
         with open(csv_file_path, 'r', encoding='ISO-8859-1') as f:
             reader = csv.reader(f)
             header = next(reader)  # Skip the header row
